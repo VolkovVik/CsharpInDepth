@@ -12,21 +12,36 @@ public class SimpleStore
     /// </summary>
     /// <param name="key"></param>
     /// <param name="value"></param>
-    public void Set(string key, byte[] value) =>
+    public void Set(string key, byte[] value)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            return;
+
         _store[key] = value;
+    }
 
     /// <summary>
     /// Получение значения по ключу
     /// </summary>
     /// <param name="key">/param>
     /// <returns></returns>
-    public byte[] Get(string key) =>
-        _store.TryGetValue(key, out var value) ? value : null;
+    public byte[] Get(string key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            return null;
+
+        return _store.TryGetValue(key, out var value) ? value : null;
+    }
 
     /// <summary>
     /// Удаление значения по ключу
     /// </summary>
     /// <param name="key"></param>
-    public void Delete(string key) =>
+    public void Delete(string key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            return;
+
         _store.Remove(key);
+    }
 }

@@ -6,28 +6,41 @@ namespace TspServer.UnitTests;
 public class CommandParserShould
 {
     [Theory]
-    [InlineData("SET user:1 data", "SET", "user:1", "data")]
-    [InlineData("SET  user:1  data", "SET", "user:1", "data")]
-    [InlineData("    SET    user:1     data   ", "SET", "user:1", "data")]
-    [InlineData("GET user:1", "GET", "user:1", "")]
-    [InlineData("GET  user:1", "GET", "user:1", "")]
-    [InlineData("    GET    user:1  ", "GET", "user:1", "")]
-    public void ReturnCorrectValues(string str, string command, string key, string value)
+    [InlineData("SET user:1 data", "SET user:1 data")]
+    [InlineData("SET  user:1  data", "SET user:1 data")]
+    [InlineData("    SET    user:1     data   ", "SET user:1 data")]
+    [InlineData("GET user:1", "GET user:1")]
+    [InlineData("GET  user:1", "GET user:1")]
+    [InlineData("    GET    user:1  ", "GET user:1")]
+    public void ReturnCorrectValuesFromByteArray(string str, string value)
     {
         // Arrange
         var data = Encoding.UTF8.GetBytes(str);
 
         // Act
-        var result = CommandParser.Parse(data);
+        var result = CommandParser<byte>.Parse(data, (byte)' ');
 
         // Assert
-        var resultCommand = Encoding.UTF8.GetString(result.Command);
-        var resultKey = Encoding.UTF8.GetString(result.Key);
-        var resultValue = Encoding.UTF8.GetString(result.Value);
+        result.ToString().ShouldBe(value);
+    }
 
-        resultCommand.ShouldBe(command);
-        resultKey.ShouldBe(key);
-        resultValue.ShouldBe(value);
+    [Theory]
+    [InlineData("SET user:1 data", "SET user:1 data")]
+    [InlineData("SET  user:1  data", "SET user:1 data")]
+    [InlineData("    SET    user:1     data   ", "SET user:1 data")]
+    [InlineData("GET user:1", "GET user:1")]
+    [InlineData("GET  user:1", "GET user:1")]
+    [InlineData("    GET    user:1  ", "GET user:1")]
+    public void ReturnCorrectValuesFromCharArray(string str, string value)
+    {
+        // Arrange
+        var data = str.ToCharArray();
+
+        // Act
+        var result = CommandParser<char>.Parse(data, ' ');
+
+        // Assert
+        result.ToString().ShouldBe(value);
     }
 
     [Theory]
@@ -37,21 +50,34 @@ public class CommandParserShould
     [InlineData("GET")]
     [InlineData("  GET  ")]
     [InlineData("GETuser:1")]
-    public void ReturnIncorrectValues(string str)
+    public void ReturnIncorrectValueFromByteArray(string str)
     {
         // Arrange
         var data = Encoding.UTF8.GetBytes(str);
 
         // Act
-        var result = CommandParser.Parse(data);
+        var result = CommandParser<byte>.Parse(data, (byte)' ');
 
         // Assert
-        var resultCommand = Encoding.UTF8.GetString(result.Command);
-        var resultKey = Encoding.UTF8.GetString(result.Key);
-        var resultValue = Encoding.UTF8.GetString(result.Value);
+        result.ToString().ShouldBeNullOrEmpty();
+    }
 
-        resultCommand.ShouldBe(string.Empty);
-        resultKey.ShouldBe(string.Empty);
-        resultValue.ShouldBe(string.Empty);
+    [Theory]
+    [InlineData("SET")]
+    [InlineData("  SET  ")]
+    [InlineData("SETuser:1")]
+    [InlineData("GET")]
+    [InlineData("  GET  ")]
+    [InlineData("GETuser:1")]
+    public void ReturnIncorrectValueFromCharArray(string str)
+    {
+        // Arrange
+        var data = str.ToCharArray();
+
+        // Act
+        var result = CommandParser<char>.Parse(data, ' ');
+
+        // Assert
+        result.ToString().ShouldBeNullOrEmpty();
     }
 }

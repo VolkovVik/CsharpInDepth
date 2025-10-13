@@ -3,8 +3,15 @@
 /// <summary>
 /// Базовое хранилище
 /// </summary>
-public class SimpleStore
+public class SimpleStore : IDisposable
 {
+    public long _setCount;
+    public long _getCount;
+    public long _deleteCount;
+
+    private bool _isDisposed;
+
+    private readonly ReaderWriterLockSlim _lock = new();
     private readonly Dictionary<string, byte[]> _store = [];
 
     /// <summary>
@@ -14,10 +21,19 @@ public class SimpleStore
     /// <param name="value"></param>
     public void Set(string key, byte[] value)
     {
-        if (string.IsNullOrWhiteSpace(key))
-            return;
+        _lock.EnterWriteLock();
+        try
+        {
+            if (string.IsNullOrWhiteSpace(key))
+                return;
 
-        _store[key] = value;
+            _store[key] = value;
+            Interlocked.Increment(ref _setCount);
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
     }
 
     /// <summary>
@@ -27,10 +43,19 @@ public class SimpleStore
     /// <returns></returns>
     public byte[] Get(string key)
     {
-        if (string.IsNullOrWhiteSpace(key))
-            return null;
+        _lock.EnterReadLock();
+        try
+        {
+            if (string.IsNullOrWhiteSpace(key) || !_store.TryGetValue(key, out var value))
+                return null;
 
-        return _store.TryGetValue(key, out var value) ? value : null;
+            Interlocked.Increment(ref _getCount);
+            return value;
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
     }
 
     /// <summary>
@@ -39,9 +64,46 @@ public class SimpleStore
     /// <param name="key"></param>
     public void Delete(string key)
     {
-        if (string.IsNullOrWhiteSpace(key))
+        _lock.EnterWriteLock();
+        try
+        {
+            if (string.IsNullOrWhiteSpace(key))
+                return;
+
+            var result = _store.Remove(key);
+            if (!result)
+                return;
+
+            Interlocked.Increment(ref _deleteCount);
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
+    }
+
+    public (long setCount, long getCount, long deleteCount) GetStatistics() =>
+        (Interlocked.Read(ref _setCount), Interlocked.Read(ref _getCount), Interlocked.Read(ref _deleteCount));
+
+    ~SimpleStore() =>
+       Dispose(false);
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_isDisposed)
             return;
 
-        _store.Remove(key);
+        if (disposing)
+        {
+            _lock?.Dispose();
+        }
+
+        _isDisposed = true;
     }
 }

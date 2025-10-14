@@ -102,6 +102,7 @@ public class SimpleStore : IDisposable
         if (disposing)
         {
             _lock?.Dispose();
+            _store?.Clear();
         }
 
         _isDisposed = true;

@@ -1,11 +1,8 @@
-﻿// See https://aka.ms/new-console-template for more information
-using TspServer;
+﻿using TspServer;
 
-var server = new TcpServer();
+using var simpleStore = new SimpleStore();
+using var server = new TcpServer(simpleStore);
+
 await server.StartAsync();
-
-Console.ReadKey();
-
-server.Dispose();
 
 Console.ReadKey();

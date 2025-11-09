@@ -11,13 +11,12 @@ namespace TspServer;
 /// </summary>
 public class TcpServer(SimpleStore simpleStore) : IDisposable
 {
-    private bool _isRunning;
     private bool _isDisposed;
     private Socket? _serverSocket;
 
     private readonly ConcurrentDictionary<Socket, SemaphoreSlim> _semaphores = new();
 
-    public async Task StartAsync(string ipAddress = "127.0.0.1", int port = 8080)
+    public async Task StartAsync(string ipAddress = "127.0.0.1", int port = 8080, CancellationToken cancellationToken = default)
     {
         var ip = string.IsNullOrWhiteSpace(ipAddress) ? IPAddress.Any : IPAddress.Parse(ipAddress);
         var endPoint = new IPEndPoint(ip, port);
@@ -26,29 +25,31 @@ public class TcpServer(SimpleStore simpleStore) : IDisposable
         _serverSocket.Bind(endPoint);
         _serverSocket.Listen(100);
 
-        _isRunning = true;
-
         Console.WriteLine($"TCP server {ip}:{port} started");
 
-        await AcceptConnectionsAsync();
+        await AcceptConnectionsAsync(cancellationToken);
     }
 
-    private async Task AcceptConnectionsAsync()
+    private async Task AcceptConnectionsAsync(CancellationToken cancellationToken = default)
     {
-        while (_serverSocket != null && _isRunning)
+        while (_serverSocket != null && !cancellationToken.IsCancellationRequested)
         {
             try
             {
-                var clientSocket = await _serverSocket!.AcceptAsync();
+                var clientSocket = await _serverSocket!.AcceptAsync(cancellationToken);
 
                 var clientSemaphore = new SemaphoreSlim(1, 1);
                 _semaphores.TryAdd(clientSocket, clientSemaphore);
 
-                _ = Task.Run(async () => await ProcessClientAsync(clientSocket, clientSemaphore));
+                _ = Task.Run(async () => await ProcessClientAsync(clientSocket, clientSemaphore, cancellationToken), cancellationToken);
             }
             catch (SocketException ex)
             {
                 Console.WriteLine($"TCP server socket error: {ex.Message}");
+            }
+            catch (TaskCanceledException)
+            {
+                break;
             }
             catch (Exception ex)
             {
@@ -57,7 +58,7 @@ public class TcpServer(SimpleStore simpleStore) : IDisposable
         }
     }
 
-    private async Task ProcessClientAsync(Socket socket, SemaphoreSlim semaphore)
+    private async Task ProcessClientAsync(Socket socket, SemaphoreSlim semaphore, CancellationToken cancellationToken = default)
     {
         Console.WriteLine($"TCP client {socket.RemoteEndPoint} connected");
 
@@ -67,9 +68,9 @@ public class TcpServer(SimpleStore simpleStore) : IDisposable
 
         try
         {
-            while (socket.Connected)
+            while (socket.Connected && !cancellationToken.IsCancellationRequested)
             {
-                var result = await ProcessClientInternalAsync(socket, semaphore, memory);
+                var result = await ProcessClientInternalAsync(socket, semaphore, memory, cancellationToken);
                 if (!result)
                     break;
             }
@@ -78,7 +79,7 @@ public class TcpServer(SimpleStore simpleStore) : IDisposable
         {
             Console.WriteLine($"TCP client socket error {socket.RemoteEndPoint}: {ex.Message}");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not TaskCanceledException && ex is not OperationCanceledException)
         {
             Console.WriteLine($"TCP client error {socket.RemoteEndPoint}: {ex.Message}");
         }
@@ -92,24 +93,28 @@ public class TcpServer(SimpleStore simpleStore) : IDisposable
         }
     }
 
-    private async Task<bool> ProcessClientInternalAsync(Socket socket, SemaphoreSlim semaphore, Memory<byte> memory)
+    private async Task<bool> ProcessClientInternalAsync(Socket socket, SemaphoreSlim semaphore, Memory<byte> memory, CancellationToken cancellationToken = default)
     {
         var isAcquired = false;
 
         try
         {
-            isAcquired = await semaphore.WaitAsync(TimeSpan.FromMilliseconds(500));
+            isAcquired = await semaphore.WaitAsync(TimeSpan.FromMilliseconds(500), cancellationToken);
             if (!isAcquired)
             {
                 Console.WriteLine($"TCP client {socket.RemoteEndPoint}. Semaphore capture timeout");
                 return true;
             }
 
-            var bytesRead = await socket.ReceiveAsync(memory, SocketFlags.None);
+            var bytesRead = await socket.ReceiveAsync(memory, SocketFlags.None, cancellationToken);
             if (bytesRead < 1)
                 return false;
 
-            await RequestProcessing(socket, memory, bytesRead);
+            await RequestProcessing(socket, memory, bytesRead, cancellationToken);
+        }
+        catch (TaskCanceledException)
+        {
+            return false;
         }
         catch (Exception ex)
         {
@@ -129,13 +134,13 @@ public class TcpServer(SimpleStore simpleStore) : IDisposable
     private static readonly byte[] NullResponse = CurrentEncoding.GetBytes("(nil)\r\n");
     private static readonly byte[] ErrorResponse = CurrentEncoding.GetBytes("-ERR Unknown command\r\n");
 
-    private async Task RequestProcessing(Socket socket, Memory<byte> memory, int bytesReaded)
+    private async Task RequestProcessing(Socket socket, Memory<byte> memory, int bytesReaded, CancellationToken cancellationToken = default)
     {
         var span = memory[..bytesReaded].Span;
         var request = CommandParser<byte>.Parse(span, (byte)' ');
         if (request.Command.IsEmpty)
         {
-            await socket.SendAsync(ErrorResponse);
+            await socket.SendAsync(ErrorResponse, cancellationToken);
             return;
         }
 
@@ -219,8 +224,6 @@ public class TcpServer(SimpleStore simpleStore) : IDisposable
 
         if (disposing)
         {
-            _isRunning = false;
-
             Console.WriteLine("TCP server stopping...");
 
             _serverSocket?.Close();
@@ -236,8 +239,6 @@ public class TcpServer(SimpleStore simpleStore) : IDisposable
                 semaphore?.Dispose();
             }
             _semaphores.Clear();
-
-            simpleStore?.Dispose();
 
             Console.WriteLine("TCP server stopped");
         }

@@ -33,8 +33,8 @@ void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
 
 static async Task RunApplicationAsync(CancellationToken cancellationToken)
 {
-    using var simpleStore = new SimpleStore();
-    using var server = new TcpServer(simpleStore);
+    using var store = new SimpleStore();
+    using var server = new TcpServer(store);
 
     await server.StartAsync(cancellationToken: cancellationToken);
 

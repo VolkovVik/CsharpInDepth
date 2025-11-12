@@ -155,7 +155,7 @@ public class TcpServer(SimpleStore simpleStore) : IDisposable
         if (request.Command.IsEmpty)
             return false;
 
-        Console.WriteLine($"TCP client {socket.RemoteEndPoint} processed reques: {request.ToString()}");
+        Console.WriteLine($"TCP client {socket.RemoteEndPoint} processed request: {request.ToString()}");
 
         var comparison = StringComparison.OrdinalIgnoreCase;
         var command = CommandParts<byte>.ToString(request.Command, CurrentEncoding);
@@ -166,25 +166,31 @@ public class TcpServer(SimpleStore simpleStore) : IDisposable
                 return false;
             case string s when s.Equals("get", comparison):
                 var value = simpleStore.Get(key);
-                await socket.SendAsync(value?.Length > 0 ? value : NullResponse, cancellationToken);
+                await SendResponseAsync(socket, value?.Length > 0 ? value : NullResponse, cancellationToken);
                 break;
             case string s when s.Equals("set", comparison) && (request.Key.IsEmpty || request.Value.IsEmpty):
                 return false;
             case string s when s.Equals("set", comparison):
                 simpleStore.Set(key, request.Value.ToArray());
-                await socket.SendAsync(OkResponse, cancellationToken);
+                await SendResponseAsync(socket, OkResponse, cancellationToken);
                 break;
             case string s when s.Equals("delete", comparison) && request.Key.IsEmpty:
                 return false;
             case string s when s.Equals("delete", comparison):
                 simpleStore.Delete(key);
-                await socket.SendAsync(OkResponse, cancellationToken);
+                await SendResponseAsync(socket, OkResponse, cancellationToken);
                 break;
             default:
-                await socket.SendAsync(ErrorResponse, cancellationToken);
+                await SendResponseAsync(socket, ErrorResponse, cancellationToken);
                 break;
         }
         return true;
+    }
+
+    private static async Task SendResponseAsync(Socket socket, ReadOnlyMemory<byte> memory, CancellationToken cancellationToken = default)
+    {
+        await socket.SendAsync(memory, cancellationToken);
+        Console.WriteLine($"TCP client {socket.RemoteEndPoint} send {memory.Length} bytes: {CurrentEncoding.GetString(memory.Span)}");
     }
 
     private void CloseSemaphore(Socket socket, SemaphoreSlim semaphore)

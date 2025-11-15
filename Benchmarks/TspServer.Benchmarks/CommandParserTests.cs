@@ -5,7 +5,7 @@ using TspServer;
 
 BenchmarkRunner.Run<CommandParserTests>();
 
-// dotnet build
+// dotnet build -c Release
 // dotnet run -c Release
 
 [MemoryDiagnoser]

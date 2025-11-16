@@ -3,11 +3,11 @@
 /// <summary>
 /// Базовое хранилище
 /// </summary>
-public class SimpleStore : IDisposable
+public sealed class SimpleStore : IDisposable
 {
-    public long _setCount;
-    public long _getCount;
-    public long _deleteCount;
+    private long _setCount;
+    private long _getCount;
+    private long _deleteCount;
 
     private bool _isDisposed;
 
@@ -39,7 +39,7 @@ public class SimpleStore : IDisposable
     /// <summary>
     /// Получение значения по ключу
     /// </summary>
-    /// <param name="key">/param>
+    /// <param name="key"></param>
     /// <returns></returns>
     public byte[] Get(string key)
     {
@@ -47,7 +47,7 @@ public class SimpleStore : IDisposable
         try
         {
             if (string.IsNullOrWhiteSpace(key) || !_store.TryGetValue(key, out var value))
-                return null;
+                return [];
 
             Interlocked.Increment(ref _getCount);
             return value;
@@ -94,15 +94,15 @@ public class SimpleStore : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    protected virtual void Dispose(bool disposing)
+    private void Dispose(bool disposing)
     {
         if (_isDisposed)
             return;
 
         if (disposing)
         {
-            _lock?.Dispose();
-            _store?.Clear();
+            _lock.Dispose();
+            _store.Clear();
         }
 
         _isDisposed = true;

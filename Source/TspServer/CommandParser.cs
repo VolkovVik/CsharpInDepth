@@ -7,7 +7,7 @@ namespace TspServer;
 /// Парсер команд
 /// </summary>
 public static class CommandParser<T>
-    where T : unmanaged, IEquatable<T>?
+    where T : unmanaged, IEquatable<T>
 {
     public static CommandParts<T> Parse(ReadOnlySpan<T> input, T delimeter)
     {
@@ -31,23 +31,25 @@ public static class CommandParser<T>
             return new ParsedParts([], input.Length);
 
         var index = input[startindex..].IndexOf(delimeter);
-        if (index == -1 && startindex == input.Length)
-            return new ParsedParts([], input.Length);
-
-        if (index is 0)
-            return ParseInternal(input, delimeter, startindex + 1);
-
-        if (index == -1 && startindex < input.Length)
-            index = input.Length - startindex;
+        switch (index)
+        {
+            case -1 when startindex == input.Length:
+                return new ParsedParts([], input.Length);
+            case 0:
+                return ParseInternal(input, delimeter, startindex + 1);
+            case -1 when startindex < input.Length:
+                index = input.Length - startindex;
+                break;
+        }
 
         var value = input.Slice(startindex, index);
         return new ParsedParts(value, startindex + index + 1);
     }
 
-    private ref struct ParsedParts
+    private readonly ref struct ParsedParts
     {
-        public int Length = 0;
-        public ReadOnlySpan<T> Value = [];
+        public readonly int Length = 0;
+        public readonly ReadOnlySpan<T> Value = [];
 
         public ParsedParts(ReadOnlySpan<T> value, int length)
         {
@@ -58,7 +60,7 @@ public static class CommandParser<T>
 }
 
 public ref struct CommandParts<T>
-    where T : unmanaged, IEquatable<T>?
+    where T : unmanaged, IEquatable<T>
 {
     public ReadOnlySpan<T> Command;
     public ReadOnlySpan<T> Key;

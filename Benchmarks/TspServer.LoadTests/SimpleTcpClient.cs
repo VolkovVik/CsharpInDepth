@@ -5,7 +5,7 @@ using System.Text;
 
 namespace TspServer.LoadTests;
 
-public class SimpleTcpClient : IDisposable
+public sealed class SimpleTcpClient : IDisposable
 {
     private bool _isDisposed;
 
@@ -22,6 +22,7 @@ public class SimpleTcpClient : IDisposable
     public async Task<string> SetAsync(string key, string value) =>
         await RequestAsync($"SET {key} {value}");
 
+    // ReSharper disable once UnusedMember.Global
     public async Task<string> GetAsync(string key) =>
         await RequestAsync($"GET {key}");
 
@@ -58,18 +59,18 @@ public class SimpleTcpClient : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    protected virtual void Dispose(bool disposing)
+    private void Dispose(bool disposing)
     {
         if (_isDisposed)
             return;
 
         if (disposing)
         {
-            _stream?.Close();
-            _client?.Close();
+            _stream.Close();
+            _client.Close();
 
-            _stream?.Dispose();
-            _client?.Dispose();
+            _stream.Dispose();
+            _client.Dispose();
         }
 
         _isDisposed = true;

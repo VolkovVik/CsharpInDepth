@@ -20,19 +20,21 @@ public class SimpleStoreShould
         for (byte i = 0; i < count; i++)
         {
             var current = i;
-            tasks.Add(Task.Run(() => store.Get($"key{current}")));
-            tasks.Add(Task.Run(() => store.Set($"key{current}", [current]), TestContext.Current.CancellationToken));
-            tasks.Add(Task.Run(() => store.Get($"key{current}")));
+            var currentStore = store;
+            tasks.Add(Task.Run(() => currentStore.Get($"key{current}")));
+            tasks.Add(Task.Run(() => currentStore.Set($"key{current}", [current]), TestContext.Current.CancellationToken));
+            tasks.Add(Task.Run(() => currentStore.Get($"key{current}")));
         }
 
 #pragma warning disable xUnit1031 // Do not use blocking task operations in test method
         Task.WaitAll([.. tasks], TestContext.Current.CancellationToken);
 #pragma warning restore xUnit1031 // Do not use blocking task operations in test method
-        var (setCounter, getCounter, _) = store.GetStatistics();
+        var (setCounter, getCounter, deleteCount) = store.GetStatistics();
 
         // Assert
         setCounter.ShouldBe(count * 2);
         getCounter.ShouldBe(count * 2);
+        deleteCount.ShouldBe(0);
         for (byte i = 0; i < count; i++)
             store.Get($"key{i}").FirstOrDefault().ShouldBe(i);
     }

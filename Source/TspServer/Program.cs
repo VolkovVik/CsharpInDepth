@@ -1,6 +1,6 @@
 ﻿using TspServer;
 
-CancellationTokenSource _cancellationTokenSource = new();
+CancellationTokenSource cancellationTokenSource = new();
 
 try
 {
@@ -8,7 +8,7 @@ try
     Console.WriteLine("Application started...");
     Console.WriteLine("Press Ctrl+C to exit");
 
-    await RunApplicationAsync(_cancellationTokenSource.Token);
+    await RunApplicationAsync(cancellationTokenSource.Token);
 }
 catch (OperationCanceledException)
 {
@@ -16,9 +16,11 @@ catch (OperationCanceledException)
 }
 finally
 {
-    _cancellationTokenSource.Dispose();
+    cancellationTokenSource.Dispose();
     Console.WriteLine("Application stopped");
 }
+
+return;
 
 void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
 {
@@ -28,7 +30,8 @@ void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
         return;
 
     e.Cancel = true;
-    _cancellationTokenSource.Cancel();
+    // ReSharper disable once AccessToDisposedClosure
+    cancellationTokenSource.Cancel();
 }
 
 static async Task RunApplicationAsync(CancellationToken cancellationToken)
@@ -39,6 +42,7 @@ static async Task RunApplicationAsync(CancellationToken cancellationToken)
     await server.StartAsync(cancellationToken: cancellationToken);
 
     while (!cancellationToken.IsCancellationRequested)
+        // ReSharper disable once RemoveRedundantBraces
     {
         try
         {

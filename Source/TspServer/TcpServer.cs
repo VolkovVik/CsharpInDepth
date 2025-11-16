@@ -9,7 +9,7 @@ namespace TspServer;
 /// <summary>
 /// TCP server
 /// </summary>
-public class TcpServer(SimpleStore simpleStore) : IDisposable
+public sealed class TcpServer(SimpleStore simpleStore) : IDisposable
 {
     private bool _isDisposed;
     private Socket? _serverSocket;
@@ -36,6 +36,7 @@ public class TcpServer(SimpleStore simpleStore) : IDisposable
     private async Task AcceptConnectionsAsync(CancellationToken cancellationToken = default)
     {
         while (_serverSocket != null && !cancellationToken.IsCancellationRequested)
+            // ReSharper disable once RemoveRedundantBraces
         {
             try
             {
@@ -157,26 +158,26 @@ public class TcpServer(SimpleStore simpleStore) : IDisposable
 
         Console.WriteLine($"TCP client {socket.RemoteEndPoint} processed request: {request.ToString()}");
 
-        var comparison = StringComparison.OrdinalIgnoreCase;
+        const StringComparison comparison = StringComparison.OrdinalIgnoreCase;
         var command = CommandParts<byte>.ToString(request.Command, CurrentEncoding);
         var key = CommandParts<byte>.ToString(request.Key, CurrentEncoding);
         switch (command)
         {
-            case string s when s.Equals("get", comparison) && request.Key.IsEmpty:
+            case not null when command.Equals("get", comparison) && request.Key.IsEmpty:
                 return false;
-            case string s when s.Equals("get", comparison):
+            case not null when command.Equals("get", comparison):
                 var value = simpleStore.Get(key);
-                await SendResponseAsync(socket, value?.Length > 0 ? value : NullResponse, cancellationToken);
+                await SendResponseAsync(socket, value.Any() ? value : NullResponse, cancellationToken);
                 break;
-            case string s when s.Equals("set", comparison) && (request.Key.IsEmpty || request.Value.IsEmpty):
+            case not null when command.Equals("set", comparison) && (request.Key.IsEmpty || request.Value.IsEmpty):
                 return false;
-            case string s when s.Equals("set", comparison):
+            case not null when command.Equals("set", comparison):
                 simpleStore.Set(key, request.Value.ToArray());
                 await SendResponseAsync(socket, OkResponse, cancellationToken);
                 break;
-            case string s when s.Equals("delete", comparison) && request.Key.IsEmpty:
+            case not null when command.Equals("delete", comparison) && request.Key.IsEmpty:
                 return false;
-            case string s when s.Equals("delete", comparison):
+            case not null when command.Equals("delete", comparison):
                 simpleStore.Delete(key);
                 await SendResponseAsync(socket, OkResponse, cancellationToken);
                 break;
@@ -193,7 +194,7 @@ public class TcpServer(SimpleStore simpleStore) : IDisposable
         Console.WriteLine($"TCP client {socket.RemoteEndPoint} send {memory.Length} bytes: {CurrentEncoding.GetString(memory.Span)}");
     }
 
-    private void CloseSemaphore(Socket socket, SemaphoreSlim semaphore)
+    private void CloseSemaphore(Socket? socket, SemaphoreSlim? semaphore)
     {
         if (socket is null)
             return;
@@ -209,7 +210,7 @@ public class TcpServer(SimpleStore simpleStore) : IDisposable
         }
     }
 
-    private static void CloseSocket(Socket socket)
+    private static void CloseSocket(Socket? socket)
     {
         if (socket is null)
             return;
@@ -241,7 +242,7 @@ public class TcpServer(SimpleStore simpleStore) : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    protected virtual void Dispose(bool disposing)
+    private void Dispose(bool disposing)
     {
         if (_isDisposed)
             return;
@@ -254,13 +255,13 @@ public class TcpServer(SimpleStore simpleStore) : IDisposable
             _serverSocket?.Dispose();
             _serverSocket = null;
 
-            foreach ((var socket, var semaphore) in _semaphores)
+            foreach (var (socket, semaphore) in _semaphores)
             {
-                socket?.Shutdown(SocketShutdown.Both);
-                socket?.Close();
-                socket?.Dispose();
+                socket.Shutdown(SocketShutdown.Both);
+                socket.Close();
+                socket.Dispose();
 
-                semaphore?.Dispose();
+                semaphore.Dispose();
             }
             _semaphores.Clear();
 

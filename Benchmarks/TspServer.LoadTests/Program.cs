@@ -5,9 +5,9 @@ using TspServer.LoadTests;
 // dotnet build -c Release
 // dotnet run -c Release
 
-const int MaxRate = 100;
+const int maxRate = 100;
 
-var _messageId = 0;
+var messageId = 0;
 var clientPool = new ConcurrentBag<SimpleTcpClient>();
 
 Console.WriteLine("Run load testing");
@@ -24,8 +24,8 @@ var scenario = Scenario.Create("tcp_scenario", async context =>
 
         try
         {
-            var messageId = Interlocked.Increment(ref _messageId);
-            var result = await client.SetAsync($"key{messageId}", $"value{messageId}");
+            var value = Interlocked.Increment(ref messageId);
+            var result = await client.SetAsync($"key{value}", $"value{value}");
             clientPool.Add(client);
             return result.StartsWith("OK", StringComparison.OrdinalIgnoreCase) ? Response.Ok() : Response.Fail();
         }
@@ -38,9 +38,9 @@ var scenario = Scenario.Create("tcp_scenario", async context =>
     });
     return Response.Ok();
 })
-.WithInit(async context =>
+.WithInit(async _ =>
 {
-    for (var i = 0; i < MaxRate; i++)
+    for (var i = 0; i < maxRate; i++)
     {
         var client = new SimpleTcpClient();
         await client.ConnectAsync();
@@ -48,7 +48,7 @@ var scenario = Scenario.Create("tcp_scenario", async context =>
         clientPool.Add(client);
     }
 })
-.WithClean(context =>
+.WithClean(_ =>
 {
     foreach (var client in clientPool)
         client.Dispose();
@@ -59,7 +59,7 @@ var scenario = Scenario.Create("tcp_scenario", async context =>
 .WithWarmUpDuration(TimeSpan.FromSeconds(10))
 .WithLoadSimulations(
     //Simulation.RampingInject(rate: MaxRate, interval: TimeSpan.FromSeconds(1), during: TimeSpan.FromSeconds(30)),
-    Simulation.Inject(rate: MaxRate, interval: TimeSpan.FromSeconds(1), during: TimeSpan.FromSeconds(30))
+    Simulation.Inject(rate: maxRate, interval: TimeSpan.FromSeconds(1), during: TimeSpan.FromSeconds(30))
 //Simulation.RampingInject(rate: 0, interval: TimeSpan.FromSeconds(1), during: TimeSpan.FromSeconds(30))
 );
 

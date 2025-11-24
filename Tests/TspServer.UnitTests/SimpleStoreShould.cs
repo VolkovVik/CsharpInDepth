@@ -13,7 +13,7 @@ public class SimpleStoreShould
         // Arrange
         using var store = new SimpleStore();
         for (var i = 0; i < count; i++)
-            store.Set($"key{i}", [0]);
+            store.Set($"key{i}", new UserProfile { Id = 0, Username = $"Username{i}" });
 
         // Act
         var tasks = new List<Task>();
@@ -21,8 +21,9 @@ public class SimpleStoreShould
         {
             var current = i;
             var currentStore = store;
+            var profile = new UserProfile { Id = current, Username = $"Username{i}" };
             tasks.Add(Task.Run(() => currentStore.Get($"key{current}")));
-            tasks.Add(Task.Run(() => currentStore.Set($"key{current}", [current]), TestContext.Current.CancellationToken));
+            tasks.Add(Task.Run(() => currentStore.Set($"key{current}", profile), TestContext.Current.CancellationToken));
             tasks.Add(Task.Run(() => currentStore.Get($"key{current}")));
         }
 
@@ -36,6 +37,6 @@ public class SimpleStoreShould
         getCounter.ShouldBe(count * 2);
         deleteCount.ShouldBe(0);
         for (byte i = 0; i < count; i++)
-            store.Get($"key{i}").FirstOrDefault().ShouldBe(i);
+            store.Get($"key{i}")?.Id.ShouldBe(i);
     }
 }

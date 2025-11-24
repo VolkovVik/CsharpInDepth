@@ -25,7 +25,7 @@ var scenario = Scenario.Create("tcp_scenario", async context =>
         try
         {
             var value = Interlocked.Increment(ref messageId);
-            var result = await client.SetAsync($"key{value}", $"value{value}");
+            var result = await client.SetAsync(value, $"value{value}");
             clientPool.Add(client);
             return result.StartsWith("OK", StringComparison.OrdinalIgnoreCase) ? Response.Ok() : Response.Fail();
         }

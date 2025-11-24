@@ -1,4 +1,6 @@
-﻿namespace TspServer;
+﻿using System.Text.Json;
+
+namespace TspServer;
 
 /// <summary>
 /// Базовое хранилище
@@ -18,15 +20,16 @@ public sealed class SimpleStore : IDisposable
     /// Добавление(обновление) значение по ключу.
     /// </summary>
     /// <param name="key"></param>
-    /// <param name="value"></param>
-    public void Set(string key, byte[] value)
+    /// <param name="profile"></param>
+    public void Set(string key, UserProfile profile)
     {
+        if (string.IsNullOrWhiteSpace(key))
+            return;
+
         _lock.EnterWriteLock();
         try
         {
-            if (string.IsNullOrWhiteSpace(key))
-                return;
-
+            var value = JsonSerializer.SerializeToUtf8Bytes(profile);
             _store[key] = value;
             Interlocked.Increment(ref _setCount);
         }
@@ -41,14 +44,18 @@ public sealed class SimpleStore : IDisposable
     /// </summary>
     /// <param name="key"></param>
     /// <returns></returns>
-    public byte[] Get(string key)
+    public UserProfile? Get(string key)
     {
+        if (string.IsNullOrWhiteSpace(key))
+            return null;
+
         _lock.EnterReadLock();
         try
         {
-            if (string.IsNullOrWhiteSpace(key) || !_store.TryGetValue(key, out var value))
-                return [];
+            if (!_store.TryGetValue(key, out var bytes) || bytes.Length < 1)
+                return null;
 
+            var value = JsonSerializer.Deserialize<UserProfile>(bytes);
             Interlocked.Increment(ref _getCount);
             return value;
         }
@@ -64,12 +71,12 @@ public sealed class SimpleStore : IDisposable
     /// <param name="key"></param>
     public void Delete(string key)
     {
+        if (string.IsNullOrWhiteSpace(key))
+            return;
+
         _lock.EnterWriteLock();
         try
         {
-            if (string.IsNullOrWhiteSpace(key))
-                return;
-
             var result = _store.Remove(key);
             if (!result)
                 return;

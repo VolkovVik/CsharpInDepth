@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 
 namespace TspServer;
 
@@ -36,7 +37,7 @@ public sealed class TcpServer(SimpleStore simpleStore) : IDisposable
     private async Task AcceptConnectionsAsync(CancellationToken cancellationToken = default)
     {
         while (_serverSocket != null && !cancellationToken.IsCancellationRequested)
-            // ReSharper disable once RemoveRedundantBraces
+        // ReSharper disable once RemoveRedundantBraces
         {
             try
             {
@@ -100,6 +101,7 @@ public sealed class TcpServer(SimpleStore simpleStore) : IDisposable
 
     private async Task<(bool result, int index)> ProcessClientInternalAsync(Socket socket, SemaphoreSlim semaphore, Memory<byte> memory, int index, CancellationToken cancellationToken = default)
     {
+        var bytesReaded = 0;
         var isAcquired = false;
 
         try
@@ -117,7 +119,7 @@ public sealed class TcpServer(SimpleStore simpleStore) : IDisposable
                 index = 0;
             }
 
-            var bytesReaded = await socket.ReceiveAsync(memory[index..], SocketFlags.None, cancellationToken);
+            bytesReaded = await socket.ReceiveAsync(memory[index..], SocketFlags.None, cancellationToken);
             if (bytesReaded < 1)
                 return (false, index);
 
@@ -129,6 +131,11 @@ public sealed class TcpServer(SimpleStore simpleStore) : IDisposable
         catch (TaskCanceledException)
         {
             return (false, index);
+        }
+        catch (JsonException ex)
+        {
+            Console.WriteLine($"TCP client parsing json error {socket.RemoteEndPoint}: {ex.Message}");
+            return (true, index + bytesReaded);
         }
         catch (Exception ex)
         {
@@ -167,25 +174,29 @@ public sealed class TcpServer(SimpleStore simpleStore) : IDisposable
                 return false;
             case not null when command.Equals("get", comparison):
                 var value = simpleStore.Get(key);
-                await SendResponseAsync(socket, value.Any() ? value : NullResponse, cancellationToken);
-                break;
+                var bytes = value is null ? NullResponse : JsonSerializer.SerializeToUtf8Bytes(value);
+                await SendResponseAsync(socket, bytes, cancellationToken);
+                return true;
             case not null when command.Equals("set", comparison) && (request.Key.IsEmpty || request.Value.IsEmpty):
                 return false;
             case not null when command.Equals("set", comparison):
-                simpleStore.Set(key, request.Value.ToArray());
+                var profile = JsonSerializer.Deserialize<UserProfile>(request.Value);
+                if (profile is null)
+                    return false;
+
+                simpleStore.Set(key, profile);
                 await SendResponseAsync(socket, OkResponse, cancellationToken);
-                break;
+                return true;
             case not null when command.Equals("delete", comparison) && request.Key.IsEmpty:
                 return false;
             case not null when command.Equals("delete", comparison):
                 simpleStore.Delete(key);
                 await SendResponseAsync(socket, OkResponse, cancellationToken);
-                break;
+                return true;
             default:
                 await SendResponseAsync(socket, ErrorResponse, cancellationToken);
-                break;
+                return true;
         }
-        return true;
     }
 
     private static async Task SendResponseAsync(Socket socket, ReadOnlyMemory<byte> memory, CancellationToken cancellationToken = default)

@@ -2,6 +2,7 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 
 namespace TspServer.LoadTests;
 
@@ -19,8 +20,13 @@ public sealed class SimpleTcpClient : IDisposable
         _stream = _client.GetStream();
     }
 
-    public async Task<string> SetAsync(string key, string value) =>
-        await RequestAsync($"SET {key} {value}");
+    public async Task<string> SetAsync(int key, string value) =>
+        await RequestAsync($"SET key{key} {JsonSerializer.Serialize(new
+        {
+            Id = key,
+            Username = value,
+            CreatedAt = DateTime.UtcNow
+        })}");
 
     // ReSharper disable once UnusedMember.Global
     public async Task<string> GetAsync(string key) =>

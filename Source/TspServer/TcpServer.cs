@@ -101,6 +101,7 @@ public sealed class TcpServer(SimpleStore simpleStore) : IDisposable
 
     private async Task<(bool result, int index)> ProcessClientInternalAsync(Socket socket, SemaphoreSlim semaphore, Memory<byte> memory, int index, CancellationToken cancellationToken = default)
     {
+        var bytesReaded = 0;
         var isAcquired = false;
 
         try
@@ -118,7 +119,7 @@ public sealed class TcpServer(SimpleStore simpleStore) : IDisposable
                 index = 0;
             }
 
-            var bytesReaded = await socket.ReceiveAsync(memory[index..], SocketFlags.None, cancellationToken);
+            bytesReaded = await socket.ReceiveAsync(memory[index..], SocketFlags.None, cancellationToken);
             if (bytesReaded < 1)
                 return (false, index);
 
@@ -130,6 +131,11 @@ public sealed class TcpServer(SimpleStore simpleStore) : IDisposable
         catch (TaskCanceledException)
         {
             return (false, index);
+        }
+        catch (JsonException ex)
+        {
+            Console.WriteLine($"TCP client parsing json error {socket.RemoteEndPoint}: {ex.Message}");
+            return (true, index + bytesReaded);
         }
         catch (Exception ex)
         {
@@ -174,7 +180,7 @@ public sealed class TcpServer(SimpleStore simpleStore) : IDisposable
             case not null when command.Equals("set", comparison) && (request.Key.IsEmpty || request.Value.IsEmpty):
                 return false;
             case not null when command.Equals("set", comparison):
-                var profile = ParseSetData(request.Value);
+                var profile = JsonSerializer.Deserialize<UserProfile>(request.Value);
                 if (profile is null)
                     return false;
 
@@ -190,18 +196,6 @@ public sealed class TcpServer(SimpleStore simpleStore) : IDisposable
             default:
                 await SendResponseAsync(socket, ErrorResponse, cancellationToken);
                 return true;
-        }
-    }
-
-    private static UserProfile? ParseSetData(ReadOnlySpan<byte> span)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<UserProfile>(span);
-        }
-        catch (Exception)
-        {
-            return null;
         }
     }
 

@@ -3,6 +3,7 @@ using BenchmarkDotNet.Running;
 using TspServer;
 
 BenchmarkRunner.Run<CommandParserTests>();
+BenchmarkRunner.Run<SerializationBenchmarks>();
 
 // dotnet build -c Release
 // dotnet run -c Release

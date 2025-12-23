@@ -7,4 +7,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+	<ProjectReference Include="..\SourceGeneratorsLibrary\SourceGeneratorsLibrary.csproj"
+					  ReferenceOutputAssembly="false"
+					  OutputItemType="Analyzer" />
+  </ItemGroup>
+
 </Project>

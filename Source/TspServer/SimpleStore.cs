@@ -29,7 +29,10 @@ public sealed class SimpleStore : IDisposable
         _lock.EnterWriteLock();
         try
         {
-            var value = JsonSerializer.SerializeToUtf8Bytes(profile);
+            using var ms = new MemoryStream();
+            profile.SerializeToBinary(ms);
+            var value = ms.ToArray();
+
             _store[key] = value;
             Interlocked.Increment(ref _setCount);
         }

@@ -1,6 +1,5 @@
 ﻿using System.Text;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 
 namespace SourceGeneratorsLibrary;
@@ -34,23 +33,6 @@ public sealed class GenerateBinarySerializerGenerator : GeneratorInternal<Genera
             GenerateSerializer(spc, classSymbol!));
     }
 
-    private static INamedTypeSymbol? GetSemanticTarget(GeneratorSyntaxContext context)
-    {
-        var classDecl = (ClassDeclarationSyntax)context.Node;
-        if (context.SemanticModel.GetDeclaredSymbol(classDecl) is not INamedTypeSymbol symbol)
-            return null;
-
-        var compilation = context.SemanticModel.Compilation;
-        var attribute = compilation.GetTypeByMetadataName($"{GeneratorNamespace}.{AttributeName}");
-        if (attribute == null)
-            return null;
-
-        return symbol.GetAttributes().Any(a =>
-            SymbolEqualityComparer.Default.Equals(a.AttributeClass, attribute))
-            ? symbol
-            : null;
-    }
-
     private static void GenerateSerializer(SourceProductionContext context, INamedTypeSymbol classSymbol)
     {
         var @namespace = classSymbol.ContainingNamespace.IsGlobalNamespace
@@ -62,6 +44,7 @@ public sealed class GenerateBinarySerializerGenerator : GeneratorInternal<Genera
             .OfType<IPropertySymbol>()
             .Where(p => !p.IsStatic)
             .Where(p => p.GetMethod is not null)
+            .Where(p => p.SetMethod is not null)
             .Where(p => p.DeclaredAccessibility == Accessibility.Public)
             .Where(p => IsSupportedType(p.Type))
             .ToList();

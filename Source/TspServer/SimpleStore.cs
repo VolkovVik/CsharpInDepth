@@ -1,6 +1,4 @@
-﻿using System.Text.Json;
-
-namespace TspServer;
+﻿namespace TspServer;
 
 /// <summary>
 /// Базовое хранилище
@@ -58,9 +56,12 @@ public sealed class SimpleStore : IDisposable
             if (!_store.TryGetValue(key, out var bytes) || bytes.Length < 1)
                 return null;
 
-            var value = JsonSerializer.Deserialize<UserProfile>(bytes);
+            var profile = new UserProfile();
+            profile.DeserializeFromBinary(bytes);
+
             Interlocked.Increment(ref _getCount);
-            return value;
+
+            return profile;
         }
         finally
         {

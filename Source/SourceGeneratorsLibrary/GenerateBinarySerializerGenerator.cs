@@ -7,6 +7,8 @@ namespace SourceGeneratorsLibrary;
 [Generator]
 public sealed class GenerateBinarySerializerGenerator : GeneratorInternal<GenerateBinarySerializerGenerator>, IIncrementalGenerator
 {
+    private static int DeserializeStringTypeCounter;
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
 #pragma warning disable S125 // Sections of code should not be commented out
@@ -35,6 +37,8 @@ public sealed class GenerateBinarySerializerGenerator : GeneratorInternal<Genera
 
     private static void GenerateSerializer(SourceProductionContext context, INamedTypeSymbol classSymbol)
     {
+        DeserializeStringTypeCounter = 0;
+
         var @namespace = classSymbol.ContainingNamespace.IsGlobalNamespace
                 ? string.Empty
                 : classSymbol.ContainingNamespace.ToDisplayString();
@@ -73,15 +77,34 @@ public sealed class GenerateBinarySerializerGenerator : GeneratorInternal<Genera
         sb.AppendLine();
 
         foreach (var prop in props)
-            AppendWriteForProperty(sb, prop);
+            AppendWriteForSerializeProperty(sb, prop);
 
         sb.AppendLine("    }");
+        sb.AppendLine();
+
+        sb.AppendLine("    public void DeserializeFromBinary(byte[] data)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        var offset = 0;");
+        sb.AppendLine("        var packet = data.AsSpan(0, data.Length);");
+        sb.AppendLine();
+
+        foreach (var prop in props)
+            AppendWriteForDeserializeProperty(sb, prop);
+
+        sb.AppendLine("    }");
+
         sb.AppendLine("}");
 
         context.AddSource($"{className}.g.cs", SourceText.From(sb.ToString(), Encoding.UTF8));
     }
+    private static bool IsSupportedType(ITypeSymbol type) =>
+        type.SpecialType switch
+        {
+            SpecialType.System_Int32 or SpecialType.System_DateTime or SpecialType.System_String => true,
+            _ => false,
+        };
 
-    private static void AppendWriteForProperty(StringBuilder sb, IPropertySymbol prop)
+    private static void AppendWriteForSerializeProperty(StringBuilder sb, IPropertySymbol prop)
     {
         switch (prop.Type.SpecialType)
         {
@@ -127,10 +150,39 @@ public sealed class GenerateBinarySerializerGenerator : GeneratorInternal<Genera
         }
         sb.AppendLine();
     }
-    private static bool IsSupportedType(ITypeSymbol type) =>
-        type.SpecialType switch
+
+    private static void AppendWriteForDeserializeProperty(StringBuilder sb, IPropertySymbol prop)
+    {
+        switch (prop.Type.SpecialType)
         {
-            SpecialType.System_Int32 or SpecialType.System_DateTime or SpecialType.System_String => true,
-            _ => false,
-        };
+            case SpecialType.System_Int32:
+                sb.Append("        this.")
+                  .Append(prop.Name)
+                  .AppendLine(" = BitConverter.ToInt32(packet.Slice(offset, 4));")
+                  .AppendLine("        offset += 4;");
+                break;
+
+            case SpecialType.System_String:
+                sb.Append(DeserializeStringTypeCounter++ > 0 ? "        " : "        var ")
+                  .AppendLine("length = BitConverter.ToInt32(packet.Slice(offset, 4));")
+                  .Append("        this.")
+                  .Append(prop.Name)
+                  .AppendLine(" = length < 1 ? string.Empty : Encoding.UTF8.GetString(packet.Slice(offset + 4, length));")
+                  .AppendLine("        offset += 4 + length;");
+                break;
+
+            case SpecialType.System_DateTime:
+                sb.Append("        this.")
+                  .Append(prop.Name)
+                  .AppendLine(" = DateTime.FromBinary(BitConverter.ToInt64(packet.Slice(offset, 8)));");
+                break;
+
+            default:
+                sb.Append("        // Unsupported type: ")
+                  .Append(prop.Type.SpecialType)
+                  .AppendLine();
+                break;
+        }
+        sb.AppendLine();
+    }
 }

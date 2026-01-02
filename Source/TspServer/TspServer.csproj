@@ -8,9 +8,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-	<ProjectReference Include="..\SourceGeneratorsLibrary\SourceGeneratorsLibrary.csproj"
-					  ReferenceOutputAssembly="false"
-					  OutputItemType="Analyzer" />
+    <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" />
+  </ItemGroup>
+
+  <ItemGroup>
+	<ProjectReference Include="..\SourceGeneratorsLibrary\SourceGeneratorsLibrary.csproj" ReferenceOutputAssembly="false" OutputItemType="Analyzer" />
   </ItemGroup>
 
 </Project>

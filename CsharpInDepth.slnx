@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/benchmarks/">
+    <Project Path="Benchmarks/TspServer.Benchmarks/TspServer.Benchmarks.csproj" />
+    <Project Path="Benchmarks/TspServer.LoadTests/TspServer.LoadTests.csproj" />
+  </Folder>
+  <Folder Name="/docs/" />
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+  </Folder>
+  <Folder Name="/source/">
+    <Project Path="Source/SourceGeneratorsLibrary/SourceGeneratorsLibrary.csproj" />
+    <Project Path="Source/TspServer/TspServer.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="Tests/TspServer.UnitTests/TspServer.UnitTests.csproj" />
+  </Folder>
+</Solution>

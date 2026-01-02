@@ -10,7 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="NBomber" Version="6.1.2" />
+    <PackageReference Include="NBomber" />
   </ItemGroup>
 
 </Project>

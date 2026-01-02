@@ -1,4 +1,6 @@
-﻿namespace TspServer;
+﻿using Microsoft.IO;
+
+namespace TspServer;
 
 /// <summary>
 /// Базовое хранилище
@@ -13,6 +15,7 @@ public sealed class SimpleStore : IDisposable
 
     private readonly ReaderWriterLockSlim _lock = new();
     private readonly Dictionary<string, byte[]> _store = [];
+    private readonly RecyclableMemoryStreamManager _manager = new();
 
     /// <summary>
     /// Добавление(обновление) значение по ключу.
@@ -27,7 +30,7 @@ public sealed class SimpleStore : IDisposable
         _lock.EnterWriteLock();
         try
         {
-            using var ms = new MemoryStream();
+            using var ms = new RecyclableMemoryStream(_manager);
             profile.SerializeToBinary(ms);
             var value = ms.ToArray();
 

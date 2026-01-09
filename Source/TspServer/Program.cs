@@ -5,9 +5,6 @@ using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using TspServer;
 
-TracerProvider? tracerProvider = null;
-MeterProvider? meterProvider = null;
-
 CancellationTokenSource cancellationTokenSource = new();
 
 try
@@ -15,6 +12,12 @@ try
     Console.CancelKeyPress += OnCancelKeyPress;
     Console.WriteLine("Application started...");
     Console.WriteLine("Press Ctrl+C to exit");
+
+    Console.WriteLine("OpenTelemetry starting...");
+    var resource = BuildOpenTelemetryResource();
+    using var tracerProvider = ConfigureTracing(resource);
+    using var meterProvider = ConfigureMetrics(resource);
+    Console.WriteLine("OpenTelemetry started");
 
     await RunApplicationAsync(cancellationTokenSource.Token);
 }
@@ -24,9 +27,6 @@ catch (OperationCanceledException)
 }
 finally
 {
-    tracerProvider?.Dispose();
-    meterProvider?.Dispose();
-
     cancellationTokenSource.Dispose();
 
     Console.WriteLine("Application stopped");
@@ -48,8 +48,6 @@ void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
 
 async Task RunApplicationAsync(CancellationToken cancellationToken)
 {
-    SetupOpenTelemetry();
-
     using var store = new SimpleStore();
     using var server = new TcpServer(store);
 
@@ -70,11 +68,9 @@ async Task RunApplicationAsync(CancellationToken cancellationToken)
     }
 }
 
-void SetupOpenTelemetry()
-{
-    Console.WriteLine("OpenTelemetry starting...");
-    // Создаем Resource для идентификации сервиса
-    var resourceBuilder = ResourceBuilder.CreateDefault()
+// Создаем Resource для идентификации сервиса
+ResourceBuilder BuildOpenTelemetryResource() =>
+    ResourceBuilder.CreateDefault()
         .AddService(
             serviceName: OpenTelemetryConstants.ServiceName,
             serviceVersion: OpenTelemetryConstants.ServiceVersion)
@@ -84,9 +80,10 @@ void SetupOpenTelemetry()
             ["application"] = "console-app"
         });
 
-    // Настройка трассировки (Traces)
-    tracerProvider = Sdk.CreateTracerProviderBuilder()
-        .SetResourceBuilder(resourceBuilder)
+// Настройка трассировки (Traces)
+TracerProvider ConfigureTracing(ResourceBuilder resource) =>
+    Sdk.CreateTracerProviderBuilder()
+        .SetResourceBuilder(resource)
         .AddSource(OpenTelemetryConstants.ServiceName)
         .AddConsoleExporter(options =>
         {
@@ -94,15 +91,13 @@ void SetupOpenTelemetry()
         })
         .Build();
 
-    // Настройка метрик (Metrics)
-    meterProvider = Sdk.CreateMeterProviderBuilder()
-        .SetResourceBuilder(resourceBuilder)
+// Настройка метрик (Metrics)
+MeterProvider ConfigureMetrics(ResourceBuilder resource) =>
+    Sdk.CreateMeterProviderBuilder()
+        .SetResourceBuilder(resource)
         .AddMeter(OpenTelemetryConstants.ServiceName)
         .AddConsoleExporter((exporterOptions, metricReaderOptions) =>
         {
             metricReaderOptions.PeriodicExportingMetricReaderOptions.ExportIntervalMilliseconds = 10000;
         })
         .Build();
-
-    Console.WriteLine("OpenTelemetry started");
-}

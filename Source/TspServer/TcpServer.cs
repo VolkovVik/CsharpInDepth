@@ -1,5 +1,7 @@
 ﻿using System.Buffers;
 using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -15,10 +17,17 @@ public sealed class TcpServer(SimpleStore simpleStore) : IDisposable
     private bool _isDisposed;
     private Socket? _serverSocket;
 
-    private const int MaxBufferSize = 256;
-    private const int MaxCommandSize = 64;
+    private const int MaxBufferSize = 8192;
+    private const int MaxCommandSize = 4096;
 
+    private readonly SemaphoreSlim _serverSemaphore = new(2, 2);
     private readonly ConcurrentDictionary<Socket, SemaphoreSlim> _semaphores = new();
+
+    private static readonly Counter<long> OperationsCounter =
+        OpenTelemetryConstants.MyMeter.CreateCounter<long>("operations.count");
+
+    private static readonly Histogram<double> OperationsTimeHistogram =
+        OpenTelemetryConstants.MyMeter.CreateHistogram<double>("operations.time");
 
     public async Task StartAsync(string ipAddress = "127.0.0.1", int port = 8080, CancellationToken cancellationToken = default)
     {
@@ -42,6 +51,14 @@ public sealed class TcpServer(SimpleStore simpleStore) : IDisposable
             try
             {
                 var clientSocket = await _serverSocket!.AcceptAsync(cancellationToken);
+
+                var isAcquired = await _serverSemaphore.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
+                if (!isAcquired)
+                {
+                    Console.WriteLine($"TCP server {clientSocket.RemoteEndPoint} connection failed");
+                    CloseSocket(clientSocket);
+                    continue;
+                }
 
                 var clientSemaphore = new SemaphoreSlim(1, 1);
                 _semaphores.TryAdd(clientSocket, clientSemaphore);
@@ -96,12 +113,13 @@ public sealed class TcpServer(SimpleStore simpleStore) : IDisposable
             CloseSemaphore(socket, semaphore);
 
             CloseSocket(socket);
+
+            _serverSemaphore.Release();
         }
     }
 
     private async Task<(bool result, int index)> ProcessClientInternalAsync(Socket socket, SemaphoreSlim semaphore, Memory<byte> memory, int index, CancellationToken cancellationToken = default)
     {
-        var bytesReaded = 0;
         var isAcquired = false;
 
         try
@@ -113,29 +131,25 @@ public sealed class TcpServer(SimpleStore simpleStore) : IDisposable
                 return (true, index);
             }
 
-            if (index > MaxBufferSize - MaxCommandSize)
-            {
-                Console.WriteLine($"TCP client {socket.RemoteEndPoint}. Buffer overflow and cleared");
-                index = 0;
-            }
-
-            bytesReaded = await socket.ReceiveAsync(memory[index..], SocketFlags.None, cancellationToken);
+            var bytesReaded = await socket.ReceiveAsync(memory[index..], SocketFlags.None, cancellationToken);
             if (bytesReaded < 1)
                 return (false, index);
 
             Console.WriteLine($"TCP client {socket.RemoteEndPoint} received {bytesReaded} bytes: {CurrentEncoding.GetString(memory[index..(index + bytesReaded)].Span)}");
 
-            var result = await RequestProcessing(socket, memory, index + bytesReaded, cancellationToken);
-            return (true, result ? 0 : index + bytesReaded);
+            index += bytesReaded;
+            if (index > MaxCommandSize)
+            {
+                Console.WriteLine($"TCP client error {socket.RemoteEndPoint}. The command length has been exceeded");
+                return (false, index);
+            }
+
+            var result = await RequestProcessing(socket, memory, index, cancellationToken);
+            return (true, result ? 0 : index);
         }
         catch (TaskCanceledException)
         {
             return (false, index);
-        }
-        catch (JsonException ex)
-        {
-            Console.WriteLine($"TCP client parsing json error {socket.RemoteEndPoint}: {ex.Message}");
-            return (true, index + bytesReaded);
         }
         catch (Exception ex)
         {
@@ -156,6 +170,43 @@ public sealed class TcpServer(SimpleStore simpleStore) : IDisposable
 
     private async Task<bool> RequestProcessing(Socket socket, Memory<byte> memory, int bytesReaded, CancellationToken cancellationToken = default)
     {
+        var startTime = Stopwatch.GetTimestamp();
+        using var activity = OpenTelemetryConstants.MyActivitySource.StartActivity("ProcessingRequest");
+
+        try
+        {
+            var result = await RequestProcessingInternal(activity, socket, memory, bytesReaded, cancellationToken);
+            if (!result)
+            {
+                activity?.SetStatus(ActivityStatusCode.Error, "Error processing request");
+                return false;
+            }
+
+            OperationsCounter.Add(1, new KeyValuePair<string, object?>("operation", "ProcessRequest"));
+            activity?.SetStatus(ActivityStatusCode.Ok);
+            return true;
+        }
+        catch (JsonException ex)
+        {
+            Console.WriteLine($"TCP client parsing json error {socket.RemoteEndPoint}: {ex.Message}");
+            activity?.SetStatus(ActivityStatusCode.Error, "Error parsing request");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.AddException(ex);
+            throw;
+        }
+        finally
+        {
+            var elapsedTime = Stopwatch.GetElapsedTime(startTime);
+            OperationsTimeHistogram.Record(elapsedTime.TotalMilliseconds, new KeyValuePair<string, object?>("operation", "ProcessRequest"));
+        }
+    }
+
+    private async Task<bool> RequestProcessingInternal(Activity? activity, Socket socket, Memory<byte> memory, int bytesReaded, CancellationToken cancellationToken = default)
+    {
         var span = memory[..bytesReaded].Span;
         Console.WriteLine($"TCP client {socket.RemoteEndPoint} processing {bytesReaded} bytes: {CurrentEncoding.GetString(span)}");
 
@@ -168,6 +219,11 @@ public sealed class TcpServer(SimpleStore simpleStore) : IDisposable
         const StringComparison comparison = StringComparison.OrdinalIgnoreCase;
         var command = CommandParts<byte>.ToString(request.Command, CurrentEncoding);
         var key = CommandParts<byte>.ToString(request.Key, CurrentEncoding);
+
+        activity?.SetTag("command.name", command);
+        activity?.SetTag("command.size", bytesReaded);
+        activity?.SetTag("command.key", key);
+
         switch (command)
         {
             case not null when command.Equals("get", comparison) && request.Key.IsEmpty:
@@ -265,6 +321,8 @@ public sealed class TcpServer(SimpleStore simpleStore) : IDisposable
             _serverSocket?.Close();
             _serverSocket?.Dispose();
             _serverSocket = null;
+
+            _serverSemaphore.Dispose();
 
             foreach (var (socket, semaphore) in _semaphores)
             {
